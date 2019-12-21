@@ -319,7 +319,23 @@ in controller -> ca.pem ca-key.pem kubernetes-key.pem kubernetes.pem \
     kubeconfigs, which enable Kubernetes clients to
      locate and authenticate to the Kubernetes API Servers.
 
-     KUBERNETES_PUBLIC_ADDRESS=$(aws elbv2 describe-load-balancers \
+--------------------
+set-cluster -> ca,server,embed-certs,kubeconfig
+set-credentials -> client-key,client.pem, "", "" > noticw name on set-credentials
+set-context ->  ns, cluster, user, kubeconfig
+use-context -> ns , kubeconfig
+
+Client Auth Configs->
+
+admin, controller-manager, scheduler,kubelet, kube-proxy
+
+controller -> controller-manager, scheduler
+worker -> kubelet, kube-proxy
+laptop -> admin
+--------------------
+
+
+KUBERNETES_PUBLIC_ADDRESS=$(aws elbv2 describe-load-balancers \
   --load-balancer-arns ${LOAD_BALANCER_ARN} \
   --output text --query 'LoadBalancers[0].DNSName')
 
@@ -344,6 +360,8 @@ in controller -> ca.pem ca-key.pem kubernetes-key.pem kubernetes.pem \
   kubectl config use-context default --kubeconfig=${instance}.kubeconfig
 done
 
+----
+
 kubectl config set-cluster kubernetes-the-hard-way \
   --certificate-authority=ca.pem \
   --embed-certs=true \
@@ -362,6 +380,8 @@ kubectl config set-context default \
   --kubeconfig=kube-proxy.kubeconfig
 
 kubectl config use-context default --kubeconfig=kube-proxy.kubeconfig
+
+---
 
 kubectl config set-cluster kubernetes-the-hard-way \
   --certificate-authority=ca.pem \
@@ -382,6 +402,8 @@ kubectl config set-context default \
 
 kubectl config use-context default --kubeconfig=kube-controller-manager.kubeconfig
 
+---
+
 kubectl config set-cluster kubernetes-the-hard-way \
   --certificate-authority=ca.pem \
   --embed-certs=true \
@@ -401,6 +423,7 @@ kubectl config set-context default \
 
 kubectl config use-context default --kubeconfig=kube-scheduler.kubeconfig
 
+---
 
 kubectl config set-cluster kubernetes-the-hard-way \
   --certificate-authority=ca.pem \
@@ -420,6 +443,24 @@ kubectl config set-context default \
   --kubeconfig=admin.kubeconfig
 
 kubectl config use-context default --kubeconfig=admin.kubeconfig
+
+---
+
+--------------------
+set-cluster -> ca,server,embed-certs,kubeconfig
+set-credentials -> client-key,client.pem, "", "" > noticw name on set-credentials
+set-context ->  ns, cluster, user, kubeconfig
+use-context -> ns , kubeconfig
+
+Client Auth Configs->
+
+admin, controller-manager, scheduler,kubelet, kube-proxy
+
+controller -> controller-manager, scheduler
+worker -> kubelet, kube-proxy
+laptop -> admin
+--------------------
+
 
 for instance in worker-0 worker-1 worker-2; do
   external_ip=$(aws ec2 describe-instances \
@@ -727,7 +768,7 @@ curl -k --cacert ca.pem https://${KUBERNETES_PUBLIC_ADDRESS}/version
 
 -------------------------------------------------
 
-  for instance in worker-0 worker-1 worker-2; do
+for instance in worker-0 worker-1 worker-2; do
   external_ip=$(aws ec2 describe-instances \
     --filters "Name=tag:Name,Values=${instance}" \
     --output text --query 'Reservations[].Instances[].PublicIpAddress')
