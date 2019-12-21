@@ -1,0 +1,6 @@
+/certs
+.envrc
+.terraform
+*.tfstate
+*.tfstate.backup
+.terraform.tfstate.lock.info
