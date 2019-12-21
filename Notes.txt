@@ -226,3 +226,9 @@ aws ec2 describe-instances --query 'Reservations[*].Instances[*].[InstanceId,Tag
 
 
 
+i-0037b6710a580c46d  controller-0  running  10.240.0.10  15.188.90.96
+i-025bb7ba236a1331b  worker-2      running  10.240.0.22  35.180.127.152
+i-04a57b1d4ef1c6d35  worker-1      running  10.240.0.21  15.188.147.110
+i-002b3c77ec94c18d9  controller-2  running  10.240.0.12  35.180.5.150
+i-0fc92582197a44c75  controller-1  running  10.240.0.11  15.188.77.249
+i-05476b46a104a9d79  worker-0      running  10.240.0.20  15.188.75.220

@@ -29,7 +29,7 @@ cat > ca-config.json <<EOF
 }                   
 EOF
 
-cat > ca-csr.json <<EOF                                                                                                                                            130 ↵
+cat > ca-csr.json <<EOF                                   
 {
   "CN": "Kubernetes",
   "key": {      
@@ -475,7 +475,8 @@ done
 wget -q --show-progress --https-only --timestamping \
   "https://github.com/etcd-io/etcd/releases/download/v3.3.10/etcd-v3.3.10-linux-amd64.tar.gz"
 
-  tar -xvf etcd-v3.3.10-linux-amd64.tar.gz
+tar -xvf etcd-v3.3.10-linux-amd64.tar.gz
+
 sudo mv etcd-v3.3.10-linux-amd64/etcd* /usr/local/bin/
 
 sudo mkdir -p /etc/etcd /var/lib/etcd
@@ -483,6 +484,10 @@ sudo cp ca.pem kubernetes-key.pem kubernetes.pem /etc/etcd/
 
 INTERNAL_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
 
+
+ETCD_NAME=$(curl -s http://169.254.169.254/latest/user-data/ \
+  | tr "|" "\n" | grep "^name" | cut -d"=" -f2)
+echo "${ETCD_NAME}"
 
 cat <<EOF | sudo tee /etc/systemd/system/etcd.service
 [Unit]
@@ -536,7 +541,12 @@ wget -q --show-progress --https-only --timestamping \
   "https://storage.googleapis.com/kubernetes-release/release/v1.15.3/bin/linux/amd64/kubectl"
 
   chmod +x kube-apiserver kube-controller-manager kube-scheduler kubectl
+
+
 sudo mv kube-apiserver kube-controller-manager kube-scheduler kubectl /usr/local/bin/
+
+
+sudo mkdir -p /var/lib/kubernetes/
 
 sudo mv ca.pem ca-key.pem kubernetes-key.pem kubernetes.pem \
   service-account-key.pem service-account.pem \
@@ -634,6 +644,9 @@ leaderElection:
   leaderElect: true
 EOF
 
+
+
+
 cat <<EOF | sudo tee /etc/systemd/system/kube-scheduler.service
 [Unit]
 Description=Kubernetes Scheduler
@@ -653,6 +666,15 @@ EOF
 sudo systemctl daemon-reload
 sudo systemctl enable kube-apiserver kube-controller-manager kube-scheduler
 sudo systemctl start kube-apiserver kube-controller-manager kube-scheduler
+
+
+
+
+kubectl get componentstatuses
+
+
+
+In One master---
 
 cat <<EOF | kubectl apply --kubeconfig admin.kubeconfig -f -
 apiVersion: rbac.authorization.k8s.io/v1beta1
@@ -692,11 +714,18 @@ subjects:
     name: kubernetes
 EOF
 
+In Laptop
+------
+
 KUBERNETES_PUBLIC_ADDRESS=$(aws elbv2 describe-load-balancers \
   --load-balancer-arns ${LOAD_BALANCER_ARN} \
   --output text --query 'LoadBalancers[].DNSName')
 
-  curl -k --cacert ca.pem https://${KUBERNETES_PUBLIC_ADDRESS}/version
+curl -k --cacert ca.pem https://${KUBERNETES_PUBLIC_ADDRESS}/version
+
+
+
+-------------------------------------------------
 
   for instance in worker-0 worker-1 worker-2; do
   external_ip=$(aws ec2 describe-instances \
@@ -709,6 +738,7 @@ done
 
 sudo apt-get update
 sudo apt-get -y install socat conntrack ipset
+sudo apt install bridge-utils
 
 
 wget -q --show-progress --https-only --timestamping \
@@ -722,15 +752,15 @@ wget -q --show-progress --https-only --timestamping \
   https://storage.googleapis.com/kubernetes-release/release/v1.15.3/bin/linux/amd64/kubelet
 
 
-  sudo mkdir -p \
-  /etc/cni/net.d \
-  /opt/cni/bin \
-  /var/lib/kubelet \
-  /var/lib/kube-proxy \
-  /var/lib/kubernetes \
-  /var/run/kubernetes
+sudo mkdir -p \
+/etc/cni/net.d \
+/opt/cni/bin \
+/var/lib/kubelet \
+/var/lib/kube-proxy \
+/var/lib/kubernetes \
+/var/run/kubernetes
 
-  chmod +x kubectl kube-proxy kubelet runc.amd64 runsc
+chmod +x kubectl kube-proxy kubelet runc.amd64 runsc
 sudo mv runc.amd64 runc
 sudo mv kubectl kube-proxy kubelet runc runsc /usr/local/bin/
 sudo tar -xvf crictl-v1.15.0-linux-amd64.tar.gz -C /usr/local/bin/
@@ -783,6 +813,12 @@ cat << EOF | sudo tee /etc/containerd/config.toml
       runtime_root = "/run/containerd/runsc"
 EOF
 
+
+
+
+
+
+
 cat <<EOF | sudo tee /etc/systemd/system/containerd.service
 [Unit]
 Description=containerd container runtime
@@ -804,6 +840,9 @@ LimitCORE=infinity
 [Install]
 WantedBy=multi-user.target
 EOF
+
+
+
 
 WORKER_NAME=$(curl -s http://169.254.169.254/latest/user-data/ \
 | tr "|" "\n" | grep "^name" | cut -d"=" -f2)
@@ -863,6 +902,8 @@ EOF
 sudo mv kube-proxy.kubeconfig /var/lib/kube-proxy/kubeconfig
 
 
+
+
 cat <<EOF | sudo tee /var/lib/kube-proxy/kube-proxy-config.yaml
 kind: KubeProxyConfiguration
 apiVersion: kubeproxy.config.k8s.io/v1alpha1
@@ -871,6 +912,9 @@ clientConnection:
 mode: "iptables"
 clusterCIDR: "10.200.0.0/16"
 EOF
+
+
+
 
 cat <<EOF | sudo tee /etc/systemd/system/kube-proxy.service
 [Unit]
@@ -887,9 +931,15 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
+
+
 sudo systemctl daemon-reload
 sudo systemctl enable containerd kubelet kube-proxy
 sudo systemctl start containerd kubelet kube-proxy
+
+
+in Laptop
+---
 
 external_ip=$(aws ec2 describe-instances \
     --filters "Name=tag:Name,Values=controller-0" \
@@ -900,6 +950,9 @@ external_ip=$(aws ec2 describe-instances \
 ssh -i kubernetesi.pem ubuntu@${external_ip}
 
 kubectl get nodes --kubeconfig admin.kubeconfig
+
+------
+
 
 KUBERNETES_PUBLIC_ADDRESS=$(aws elbv2 describe-load-balancers \
 --load-balancer-arns ${LOAD_BALANCER_ARN} \
@@ -926,6 +979,12 @@ kubectl get componentstatuses
 kubectl get nodes
 
 
+--------------------------
+aws ec2 describe-vpcs --filter Name=tag:Name,Values=kubernetes
+
+VPC_ID=$(aws ec2 describe-vpcs --filter Name=tag:Name,Values=kubernetes --output text --query 'Vpcs[0].VpcId')
+
+ROUTE_TABLE_ID=$(aws ec2 describe-route-tables --filter Name=tag:Name,Values=kubernetes --output text --query 'RouteTables[0].Associations[0].RouteTableId')
 
 
 for instance in worker-0 worker-1 worker-2; do
@@ -948,23 +1007,22 @@ for instance in worker-0 worker-1 worker-2; do
 done
 
 
-aws ec2 describe-vpcs --filter Name=tag:Name,Values=kubernetes
 
-VPC_ID=$(aws ec2 describe-vpcs --filter Name=tag:Name,Values=kubernetes --output text --query 'Vpcs[0].VpcId')
-
-aws ec2 describe-route-tables --filter Name=tag:Name,Values=kubernetes --output text --query 'RouteTables[0].Associations[0].RouteTableId'
 
 
 
 aws ec2 describe-route-tables \
   --route-table-ids "${ROUTE_TABLE_ID}" \
-  --query 'RouteTables[].Routes
+  --query 'RouteTables[].Routes'
 
-  kubectl apply -f https://storage.googleapis.com/kubernetes-the-hard-way/coredns.yaml
 
-  kubectl get pods -l k8s-app=kube-dns -n kube-system
 
-  kubectl run busybox --image=busybox:1.28 --restart=Never -- sleep 3600
+
+kubectl apply -f https://storage.googleapis.com/kubernetes-the-hard-way/coredns.yaml
+
+kubectl get pods -l k8s-app=kube-dns -n kube-system
+
+kubectl run busybox --image=busybox:1.28 --restart=Never -- sleep 3600
 
 kubectl get pod busybox
 
@@ -1005,11 +1063,15 @@ kubectl expose deployment nginx --port 80 --type NodePort
 NODE_PORT=$(kubectl get svc nginx \
   --output=jsonpath='{range .spec.ports[0]}{.nodePort}')
 
-  aws ec2 authorize-security-group-ingress \
-  --group-id ${SECURITY_GROUP_ID} \
-  --protocol tcp \
-  --port ${NODE_PORT} \
-  --cidr 0.0.0.0/0
+
+SECURITY_GROUP_ID=$(aws ec2 describe-security-groups --filter Name=tag:Name,Values=kubernetes --output text --query 'SecurityGroups[0].GroupId')
+
+
+aws ec2 authorize-security-group-ingress \
+--group-id ${SECURITY_GROUP_ID} \
+--protocol tcp \
+--port ${NODE_PORT} \
+--cidr 0.0.0.0/0
 
   INSTANCE_NAME=$(kubectl get pod $POD_NAME --output=jsonpath='{.spec.nodeName}')
 
@@ -1019,8 +1081,36 @@ EXTERNAL_IP=$(aws ec2 describe-instances \
 
     If you deployed the cluster on ANY OTHER region use this command:
 
+
+AWS_REGION=eu-west-3
+
 EXTERNAL_IP=$(aws ec2 describe-instances \
     --filters "Name=network-interface.private-dns-name,Values=${INSTANCE_NAME}.${AWS_REGION}.compute.internal" \
     --output text --query 'Reservations[].Instances[].PublicIpAddress')
 
     curl -I http://${EXTERNAL_IP}:${NODE_PORT}
+
+
+
+
+
+
+
+KUBERNETES_PUBLIC_ADDRESS=$(aws elbv2 describe-load-balancers \
+--load-balancer-arns ${LOAD_BALANCER_ARN} \
+--output text --query 'LoadBalancers[].DNSName')
+
+kubectl config set-cluster kubernetes-the-hard-way \
+  --certificate-authority=/var/lib/kubernetes/ca.pem \
+  --embed-certs=true \
+  --server=https://${KUBERNETES_PUBLIC_ADDRESS}:443
+
+kubectl config set-credentials admin \
+  --client-certificate=/var/lib/kubernetes/admin.pem \
+  --client-key=/var/lib/kubernetes/admin-key.pem
+
+kubectl config set-context kubernetes-the-hard-way \
+  --cluster=kubernetes-the-hard-way \
+  --user=admin
+
+kubectl config use-context kubernetes-the-hard-way
