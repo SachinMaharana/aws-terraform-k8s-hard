@@ -7,7 +7,7 @@ variable "availability_zones" {
 
 
 variable "region" {
-  default = "eu-west-3"
+  default = "us-east-2"
 }
 
 
@@ -23,5 +23,34 @@ variable "cluster_cidr" {
 variable "all_cidr" {
   default = "0.0.0.0/0"
 }
+
+
+
+variable "controller_count" {
+  default = 3
+}
+
+
+variable "worker_count" {
+  default = 3
+}
+
+
+variable "etcd_count" {
+  default = 3
+}
+
+
+
+
+variable "lb_count" {
+  default = 1
+}
+
+variable "centos" {
+  default = "ami-0f2b4fc905b0bd1f1"
+}
+
+
 
 

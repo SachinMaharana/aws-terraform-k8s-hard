@@ -232,3 +232,7 @@ i-04a57b1d4ef1c6d35  worker-1      running  10.240.0.21  15.188.147.110
 i-002b3c77ec94c18d9  controller-2  running  10.240.0.12  35.180.5.150
 i-0fc92582197a44c75  controller-1  running  10.240.0.11  15.188.77.249
 i-05476b46a104a9d79  worker-0      running  10.240.0.20  15.188.75.220
+
+
+
+https://docs.docker.com/install/linux/docker-ce/centos/

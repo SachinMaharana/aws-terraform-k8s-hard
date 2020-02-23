@@ -99,6 +99,14 @@ resource "aws_security_group_rule" "allow_https" {
   security_group_id = aws_security_group.kubernetes.id
   cidr_blocks       = [var.all_cidr]
 }
+resource "aws_security_group_rule" "allow_http" {
+  type              = "ingress"
+  from_port         = 80
+  to_port           = 80
+  protocol          = "tcp"
+  security_group_id = aws_security_group.kubernetes.id
+  cidr_blocks       = [var.all_cidr]
+}
 
 
 resource "aws_security_group_rule" "allow_k8s_https" {
@@ -202,23 +210,35 @@ resource "aws_lb_listener" "kubernetes" {
   }
 }
 
-
-# resource "aws_key_pair" "ssh" {
-#   key_name   = "kubernetes"
-#   public_key = "ssh-rsa"
-# }
-
 resource "aws_instance" "controller" {
-  count                       = 3
+  count                       = var.controller_count
   associate_public_ip_address = true
-  ami                         = data.aws_ami.ubuntu.id
+  ami                         = "ami-0f2b4fc905b0bd1f1"
   key_name                    = "kubernetes"
   vpc_security_group_ids      = [aws_security_group.kubernetes.id]
-  instance_type               = "t3.micro"
+  instance_type               = "t3.medium"
   private_ip                  = "10.240.0.1${count.index}"
-  user_data                   = "name=controller-${count.index}"
   subnet_id                   = aws_subnet.subnet.id
-  source_dest_check           = false
+  connection {
+    type        = "ssh"
+    user        = "centos"
+    private_key = file("/home/sachin/blackhole/aws-terraform-final/kubernetes.pem")
+    timeout     = "5m"
+    host        = self.public_ip
+
+  }
+
+  provisioner "file" {
+    source      = "install_docker.sh"
+    destination = "/tmp/install_docker.sh"
+  }
+  provisioner "remote-exec" {
+    inline = [
+      "chmod +x /tmp/install_docker.sh",
+      "/tmp/install_docker.sh",
+    ]
+  }
+  source_dest_check = false
   tags = {
     Name = "controller-${count.index}"
   }
@@ -231,16 +251,35 @@ resource "aws_instance" "controller" {
 
 
 resource "aws_instance" "worker" {
-  count                       = 3
+  count                       = var.worker_count
   associate_public_ip_address = true
-  ami                         = data.aws_ami.ubuntu.id
+  ami                         = "ami-0f2b4fc905b0bd1f1"
   key_name                    = "kubernetes"
   vpc_security_group_ids      = [aws_security_group.kubernetes.id]
-  instance_type               = "t3.micro"
+  instance_type               = "t3.medium"
   private_ip                  = "10.240.0.2${count.index}"
-  user_data                   = "name=worker-${count.index}|pod-cidr=10.200.${count.index}.0/24"
   subnet_id                   = aws_subnet.subnet.id
-  source_dest_check           = false
+  connection {
+    type        = "ssh"
+    user        = "centos"
+    private_key = file("/home/sachin/blackhole/aws-terraform-final/kubernetes.pem")
+    timeout     = "5m"
+    host        = self.public_ip
+
+  }
+
+  provisioner "file" {
+    source      = "install_docker.sh"
+    destination = "/tmp/install_docker.sh"
+  }
+  provisioner "remote-exec" {
+    inline = [
+      "chmod +x /tmp/install_docker.sh",
+      "/tmp/install_docker.sh",
+    ]
+  }
+
+  source_dest_check = false
   tags = {
     Name = "worker-${count.index}"
   }
@@ -251,8 +290,110 @@ resource "aws_instance" "worker" {
   }
 }
 
+resource "aws_instance" "etcd" {
+  count                       = var.etcd_count
+  associate_public_ip_address = true
+  ami                         = "ami-0f2b4fc905b0bd1f1"
+  key_name                    = "kubernetes"
+  vpc_security_group_ids      = [aws_security_group.kubernetes.id]
+  instance_type               = "t3.small"
+  private_ip                  = "10.240.0.3${count.index}"
+  subnet_id                   = aws_subnet.subnet.id
+  source_dest_check           = false
+  connection {
+    type        = "ssh"
+    user        = "centos"
+    private_key = file("/home/sachin/blackhole/aws-terraform-final/kubernetes.pem")
+    timeout     = "5m"
+    host        = self.public_ip
+
+  }
+
+  provisioner "file" {
+    source      = "install_docker.sh"
+    destination = "/tmp/install_docker.sh"
+  }
+  provisioner "remote-exec" {
+    inline = [
+      "chmod +x /tmp/install_docker.sh",
+      "/tmp/install_docker.sh",
+    ]
+  }
+  tags = {
+    Name = "etcd-${count.index}"
+  }
+  ebs_block_device {
+    device_name = "/dev/sda1"
+    volume_size = 50
+    volume_type = "standard"
+  }
+}
 
 
+resource "aws_instance" "lb" {
+  count                       = var.lb_count
+  associate_public_ip_address = true
+  ami                         = "ami-0f2b4fc905b0bd1f1"
+  key_name                    = "kubernetes"
+  vpc_security_group_ids      = [aws_security_group.kubernetes.id]
+  instance_type               = "t3.micro"
+  private_ip                  = "10.240.0.4${count.index}"
+  subnet_id                   = aws_subnet.subnet.id
+  source_dest_check           = false
+  tags = {
+    Name = "lb-${count.index}"
+  }
+
+  connection {
+    type        = "ssh"
+    user        = "centos"
+    private_key = file("/home/sachin/blackhole/aws-terraform-final/kubernetes.pem")
+    timeout     = "5m"
+    host        = self.public_ip
+
+  }
+
+  provisioner "file" {
+    source      = "install_docker.sh"
+    destination = "/tmp/install_docker.sh"
+  }
+  provisioner "remote-exec" {
+    inline = [
+      "chmod +x /tmp/install_docker.sh",
+      "/tmp/install_docker.sh",
+    ]
+  }
+  ebs_block_device {
+    device_name = "/dev/sda1"
+    volume_size = 50
+    volume_type = "standard"
+  }
+}
+
+
+
+
+
+# resource "aws_instance" "nfs" {
+#   count                       = 1
+#   associate_public_ip_address = true
+#   ami                         = "ami-0f2b4fc905b0bd1f1"
+#   key_name                    = "kubernetes"
+#   vpc_security_group_ids      = [aws_security_group.kubernetes.id]
+#   instance_type               = "t3.micro"
+#   private_ip                  = "10.240.0.5${count.index}"
+#   user_data                   = "name=lb-${count.index}|pod-cidr=10.200.${count.index}.0/24"
+#   subnet_id                   = aws_subnet.subnet.id
+#   source_dest_check           = false
+#   tags = {
+#     Name = "lb-${count.index}"
+#   }
+#   ebs_block_device {
+#     device_name = "/dev/sda1"
+#     volume_size = 75
+#     volume_type = "standard"
+#   }
+# }
 
 
 

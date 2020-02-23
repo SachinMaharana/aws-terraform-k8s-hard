@@ -1155,3 +1155,153 @@ kubectl config set-context kubernetes-the-hard-way \
   --user=admin
 
 kubectl config use-context kubernetes-the-hard-way
+
+
+
+
+
+
+
+export HOST0=10.240.0.30
+export HOST1=10.240.0.31
+export HOST2=10.240.0.32
+
+
+ETCDHOSTS=(${HOST0} ${HOST1} ${HOST2})
+NAMES=("ip-10-240-0-30.us-east-2.compute.internal" "ip-10-240-0-31.us-east-2.compute.internal" "ip-10-240-0-32.us-east-2.compute.internal")
+
+for i in "${!ETCDHOSTS[@]}"; do
+HOST=${ETCDHOSTS[$i]}
+NAME=${NAMES[$i]}
+cat << EOF > /tmp/${HOST}/kubeadmcfg.yaml
+apiVersion: "kubeadm.k8s.io/v1beta2"
+kind: ClusterConfiguration
+etcd:
+    local:
+        serverCertSANs:
+        - "${HOST}"
+        peerCertSANs:
+        - "${HOST}"
+        extraArgs:
+            initial-cluster: ${NAMES[0]}=https://${ETCDHOSTS[0]}:2380,${NAMES[1]}=https://${ETCDHOSTS[1]}:2380,${NAMES[2]}=https://${ETCDHOSTS[2]}:2380
+            initial-cluster-state: new
+            name: ${NAME}
+            listen-peer-urls: https://${HOST}:2380
+            listen-client-urls: https://${HOST}:2379
+            advertise-client-urls: https://${HOST}:2379
+            initial-advertise-peer-urls: https://${HOST}:2380
+EOF
+done
+
+
+
+USER=centos
+HOST=${HOST1}
+scp -i kubernetes.pem -r /tmp/${HOST}/* ${USER}@${HOST}:
+ssh -i kubernetes.pem ${USER}@${HOST}
+USER@HOST $ sudo -Es
+root@HOST $ chown -R root:root pki
+root@HOST $ mv pki /etc/kubernetes/
+
+# k8s-etcd-03
+USER=centos
+HOST=${HOST2}
+scp -i kubernetes.pem -r /tmp/${HOST}/* ${USER}@${HOST}:
+ssh -i kubernetes.pem ${USER}@${HOST}
+sudo -Es
+chown -R root:root pki
+mv pki /etc/kubernetes/
+
+kubeadm init phase etcd local --config=/home/centos/kubeadmcfg.yaml
+
+
+docker run --rm -it \
+--net host \
+-v /etc/kubernetes:/etc/kubernetes k8s.gcr.io/etcd:${ETCD_TAG} etcdctl \
+--cert /etc/kubernetes/pki/etcd/peer.crt \
+--key /etc/kubernetes/pki/etcd/peer.key \
+--cacert /etc/kubernetes/pki/etcd/ca.crt \
+--endpoints https://${HOST1}:2379 endpoint health --cluster
+
+
+
+
+frontend kubernetes
+        bind 10.240.0.40:6443
+        option tcplog
+        mode tcp
+        default_backend kubernetes-master-nodes
+
+backend kubernetes-master-nodes
+        mode tcp
+        balance roundrobin
+        option tcp-check
+        server ip-10-240-0-10.us-east-2.compute.internal 10.240.0.10:6443 check fall 3 rise 2
+        server ip-10-240-0-11.us-east-2.compute.internal 10.240.0.11:6443 check fall 3 rise 2
+        server ip-10-240-0-12.us-east-2.compute.internal 10.240.0.12:6443 check fall 3 rise 2
+
+
+
+export CONTROL_PLANE="centos@10.240.0.10"
+
+ssh -i kubernetes.pem ${CONTROL_PLANE}
+
+scp -i kubernetes.pem /etc/kubernetes/pki/etcd/ca.crt "${CONTROL_PLANE}":~/
+scp -i kubernetes.pem /etc/kubernetes/pki/apiserver-etcd-client.crt "${CONTROL_PLANE}":~/
+scp -i kubernetes.pem /etc/kubernetes/pki/apiserver-etcd-client.key "${CONTROL_PLANE}":~/
+
+
+
+
+apiVersion: kubeadm.k8s.io/v1beta2
+kind: ClusterConfiguration
+kubernetesVersion: stable
+controlPlaneEndpoint: "ip-10-240-0-40.us-east-2.compute.internal:6443"
+networking:
+        podSubnet: "192.168.0.0/16"
+etcd:
+    external:
+        endpoints:
+        - https://10.240.0.30:2379
+        - https://10.240.0.31:2379
+        - https://10.240.0.32:2379
+        caFile: /etc/kubernetes/pki/etcd/ca.crt
+        certFile: /etc/kubernetes/pki/apiserver-etcd-client.crt
+        keyFile: /etc/kubernetes/pki/apiserver-etcd-client.key
+
+
+kubeadm join ip-10-240-0-40.us-east-2.compute.internal:6443 --token 3mfnon.6hp17i1nbbzn33gm     --discovery-token-ca-cert-hash sha256:704a17685f48b917974974bec75082e9848736ede00e205851739f2e87273cc6
+
+
+        Your Kubernetes control-plane has initialized successfully!
+
+To start using your cluster, you need to run the following as a regular user:
+
+  mkdir -p $HOME/.kube
+  sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+  sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+You should now deploy a pod network to the cluster.
+Run "kubectl apply -f [podnetwork].yaml" with one of the options listed at:
+  https://kubernetes.io/docs/concepts/cluster-administration/addons/
+
+You can now join any number of the control-plane node running the following command on each as root:
+
+  kubeadm join ip-10-240-0-40.us-east-2.compute.internal:6443 --token 5ueren.qqnkrwwuuqh6xa64 \
+    --discovery-token-ca-cert-hash sha256:806651997ca2bdcb54c159b6c5bfda54acf4fe40f194d6a2cd9a14a889be4361 \
+    --control-plane --certificate-key 7a18465375a2c1b4ecc2352b40043801123b528313a79cbaf81a5c3ddaa4050a
+
+Please note that the certificate-key gives access to cluster sensitive data, keep it secret!
+As a safeguard, uploaded-certs will be deleted in two hours; If necessary, you can use
+"kubeadm init phase upload-certs --upload-certs" to reload certs afterward.
+
+Then you can join any number of worker nodes by running the following on each as root:
+
+kubeadm join ip-10-240-0-40.us-east-2.compute.internal:6443 --token 5ueren.qqnkrwwuuqh6xa64 \
+    --discovery-token-ca-cert-hash sha256:806651997ca2bdcb54c159b6c5bfda54acf4fe40f194d6a2cd9a14a889be4361
+`
+
+
+
+mount -t nfs -o vers=4 10.240.0.44:/backups /backups
+mount -t nfs -o vers=4 10.240.0.44:/www /srv/backups
